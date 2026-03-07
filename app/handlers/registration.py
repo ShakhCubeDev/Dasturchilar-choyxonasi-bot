@@ -15,7 +15,6 @@ from app.keyboards.common import (
     confirm_keyboard,
     contact_keyboard,
     experience_keyboard,
-    group_select_keyboard,
     language_keyboard,
     remove_reply_keyboard,
 )
@@ -101,22 +100,6 @@ async def _resolve_group_for_start(message: Message, state: FSMContext, ctx: App
         # continue registration for the exact target group from payload.
         return group_from_payload, str(group_from_payload)
 
-    data = await state.get_data()
-    if data.get("group_chat_id"):
-        grp = await ctx.groups.get_by_chat_id(int(data["group_chat_id"]))
-        if grp:
-            return grp.chat_id, grp.title
-
-    owned = await ctx.groups.list_owned_groups(message.from_user.id)
-    if len(owned) == 1:
-        return owned[0].chat_id, owned[0].title
-
-    gated_group_ids = await ctx.gates.list_group_ids_for_user(message.from_user.id)
-    if len(gated_group_ids) == 1:
-        grp = await ctx.groups.get_by_chat_id(gated_group_ids[0])
-        if grp:
-            return grp.chat_id, grp.title
-
     return None, None
 
 
@@ -154,19 +137,6 @@ async def start_registration(message: Message, state: FSMContext, ctx: AppContex
 
     group_chat_id, group_title = await _resolve_group_for_start(message, state, ctx)
     if group_chat_id is None:
-        owned = await ctx.groups.list_owned_groups(telegram_id)
-        if owned:
-            await state.clear()
-            await state.set_state(RegistrationStates.group)
-            await state.update_data(telegram_id=telegram_id, username=username)
-            await touch_state(state)
-            rows = [(g.chat_id, g.title) for g in owned]
-            await message.answer(
-                _with_support(await ctx.texts.t("uz", "group_choose"), "uz"),
-                reply_markup=group_select_keyboard(rows),
-            )
-            return
-
         await message.answer(
             _with_support(
                 "Ro'yxatdan o'tish shu guruhning inline tugmasi (deep link) orqali boshlanadi.",
