@@ -187,6 +187,26 @@ def admin_reply_cancel_back_keyboard() -> ReplyKeyboardMarkup:
     )
 
 
+def group_admin_panel_keyboard() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="Guruhlarim"), KeyboardButton(text="Tanlangan guruh holati")],
+            [KeyboardButton(text="Majburiylikni yoqish"), KeyboardButton(text="Majburiylikni o'chirish")],
+            [KeyboardButton(text="Panelni yopish")],
+        ],
+        resize_keyboard=True,
+    )
+
+
+def group_admin_group_picker_keyboard(items: list[tuple[int, str]]) -> ReplyKeyboardMarkup:
+    rows: list[list[KeyboardButton]] = []
+    for chat_id, title in items[:20]:
+        label = f"{title[:32]} | {chat_id}"
+        rows.append([KeyboardButton(text=label)])
+    rows.append([KeyboardButton(text="Guruh paneliga qaytish")])
+    return ReplyKeyboardMarkup(keyboard=rows, resize_keyboard=True)
+
+
 def registration_toggle_keyboard(group_chat_id: int, lang: str = "uz") -> InlineKeyboardMarkup:
     on_text = {
         "uz": "Ro'yxatdan o'tishni YOQISH",

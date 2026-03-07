@@ -8,7 +8,7 @@ from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import CallbackQuery, ChatPermissions, Message
+from aiogram.types import CallbackQuery, ChatPermissions, Message, ReplyKeyboardRemove
 
 from app.keyboards.common import (
     admin_reply_cancel_back_keyboard,
@@ -16,6 +16,8 @@ from app.keyboards.common import (
     admin_reply_main_keyboard,
     admin_reply_on_off_keyboard,
     admin_reply_spam_actions_keyboard,
+    group_admin_group_picker_keyboard,
+    group_admin_panel_keyboard,
     registration_deeplink_keyboard,
 )
 from app.services.context import AppContext
@@ -108,6 +110,91 @@ class AdminStates(StatesGroup):
     set_active_group = State()
     set_active_user = State()
     purge_user_input = State()
+    group_panel_menu = State()
+    group_panel_group_select = State()
+
+
+def _panel_group_status_label(enabled: bool) -> str:
+    return "YOQILGAN" if enabled else "O'CHIRILGAN"
+
+
+def _parse_group_picker_value(raw: str) -> int | None:
+    value = (raw or "").strip()
+    if "|" not in value:
+        return None
+    return _parse_chat_id(value.rsplit("|", 1)[1].strip())
+
+
+async def _list_panel_groups(bot, user_id: int, ctx: AppContext) -> list:
+    groups = await ctx.groups.list_all_groups()
+    result = []
+    for group in groups:
+        if group.chat_id == ctx.settings.special_group_id:
+            continue
+        if _is_admin(user_id, ctx) or group.owner_telegram_id == user_id:
+            result.append(group)
+            continue
+        if await _is_group_admin(bot, group.chat_id, user_id):
+            result.append(group)
+    return result
+
+
+async def _show_group_panel(message: Message, state: FSMContext, ctx: AppContext, note: str | None = None) -> None:
+    groups = await _list_panel_groups(message.bot, message.from_user.id, ctx)
+    if not groups:
+        await state.clear()
+        await message.answer(
+            "Sizga biriktirilgan boshqariladigan guruh topilmadi. Avval botni guruhingizga qo'shib admin qiling.",
+            reply_markup=ReplyKeyboardRemove(),
+        )
+        return
+
+    data = await state.get_data()
+    selected_gid = data.get("group_panel_selected_gid")
+    selected = next((group for group in groups if group.chat_id == selected_gid), groups[0])
+    await state.set_state(AdminStates.group_panel_menu)
+    await state.update_data(group_panel_selected_gid=selected.chat_id)
+
+    lines = [
+        "Kichik admin panel",
+        "",
+        f"Tanlangan guruh: {selected.title}",
+        f"Group ID: {selected.chat_id}",
+        f"Ro'yxatdan o'tish majburiyligi: {_panel_group_status_label(selected.registration_enabled)}",
+        "",
+        "Tugmalar orqali holatni almashtirishingiz mumkin.",
+    ]
+    if note:
+        lines.extend(["", note])
+    await message.answer("\n".join(lines), reply_markup=group_admin_panel_keyboard())
+
+
+async def _apply_group_registration_toggle(message: Message, state: FSMContext, ctx: AppContext, enabled: bool) -> None:
+    groups = await _list_panel_groups(message.bot, message.from_user.id, ctx)
+    if not groups:
+        await state.clear()
+        await message.answer("Siz uchun boshqariladigan guruh topilmadi.", reply_markup=ReplyKeyboardRemove())
+        return
+
+    data = await state.get_data()
+    selected_gid = data.get("group_panel_selected_gid")
+    selected = next((group for group in groups if group.chat_id == selected_gid), None)
+    if selected is None:
+        await _show_group_panel(message, state, ctx, "Avval guruhni qayta tanlang.")
+        return
+
+    if not (_is_primary_admin(message.from_user.id, ctx) or selected.owner_telegram_id == message.from_user.id):
+        if not await _is_group_admin(message.bot, selected.chat_id, message.from_user.id):
+            await message.answer("Bu amal faqat tanlangan guruh adminlari uchun.")
+            return
+
+    await ctx.groups.set_registration_enabled(selected.chat_id, enabled)
+    await _show_group_panel(
+        message,
+        state,
+        ctx,
+        f"{selected.title} uchun ro'yxatdan o'tish majburiyligi {_panel_group_status_label(enabled)} qilindi.",
+    )
 
 
 async def _unrestrict_in_group(bot, group_chat_id: int, telegram_id: int) -> bool:
@@ -184,6 +271,94 @@ async def admin_panel_cmd(message: Message, state: FSMContext, ctx: AppContext) 
         return
     await state.clear()
     await _show_main_menu(message, ctx)
+
+
+@router.message(Command("panel"), F.chat.type == "private")
+async def group_panel_cmd(message: Message, state: FSMContext, ctx: AppContext) -> None:
+    groups = await _list_panel_groups(message.bot, message.from_user.id, ctx)
+    if not groups:
+        if _is_admin(message.from_user.id, ctx):
+            await state.clear()
+            await _show_main_menu(message, ctx)
+            return
+        await message.answer(
+            "Siz uchun kichik admin panel hali mavjud emas. Avval botni guruhingizga qo'shib admin qiling.",
+            reply_markup=ReplyKeyboardRemove(),
+        )
+        return
+    await state.clear()
+    await state.set_state(AdminStates.group_panel_menu)
+    await state.update_data(group_panel_selected_gid=groups[0].chat_id)
+    await _show_group_panel(message, state, ctx)
+
+
+@router.message(F.chat.type == "private", F.text == "Guruhlarim")
+async def group_panel_groups(message: Message, state: FSMContext, ctx: AppContext) -> None:
+    groups = await _list_panel_groups(message.bot, message.from_user.id, ctx)
+    if not groups:
+        return
+    await state.set_state(AdminStates.group_panel_group_select)
+    await message.answer(
+        "Boshqarmoqchi bo'lgan guruhni tanlang:",
+        reply_markup=group_admin_group_picker_keyboard([(group.chat_id, group.title) for group in groups]),
+    )
+
+
+@router.message(AdminStates.group_panel_group_select, F.chat.type == "private", F.text == "Guruh paneliga qaytish")
+async def group_panel_group_back(message: Message, state: FSMContext, ctx: AppContext) -> None:
+    await _show_group_panel(message, state, ctx)
+
+
+@router.message(AdminStates.group_panel_group_select, F.chat.type == "private")
+async def group_panel_group_select(message: Message, state: FSMContext, ctx: AppContext) -> None:
+    groups = await _list_panel_groups(message.bot, message.from_user.id, ctx)
+    if not groups:
+        await state.clear()
+        await message.answer("Siz uchun boshqariladigan guruh topilmadi.", reply_markup=ReplyKeyboardRemove())
+        return
+    gid = _parse_group_picker_value(message.text or "")
+    selected = next((group for group in groups if group.chat_id == gid), None)
+    if selected is None:
+        await message.answer(
+            "Iltimos, ro'yxatdan bir guruhni tanlang.",
+            reply_markup=group_admin_group_picker_keyboard([(group.chat_id, group.title) for group in groups]),
+        )
+        return
+    await state.update_data(group_panel_selected_gid=selected.chat_id)
+    await _show_group_panel(message, state, ctx, f"Tanlangan guruh: {selected.title}")
+
+
+@router.message(F.chat.type == "private", F.text == "Tanlangan guruh holati")
+async def group_panel_status(message: Message, state: FSMContext, ctx: AppContext) -> None:
+    groups = await _list_panel_groups(message.bot, message.from_user.id, ctx)
+    if not groups:
+        return
+    await _show_group_panel(message, state, ctx)
+
+
+@router.message(F.chat.type == "private", F.text == "Majburiylikni yoqish")
+async def group_panel_enable(message: Message, state: FSMContext, ctx: AppContext) -> None:
+    groups = await _list_panel_groups(message.bot, message.from_user.id, ctx)
+    if not groups:
+        return
+    await _apply_group_registration_toggle(message, state, ctx, True)
+
+
+@router.message(F.chat.type == "private", F.text == "Majburiylikni o'chirish")
+async def group_panel_disable(message: Message, state: FSMContext, ctx: AppContext) -> None:
+    groups = await _list_panel_groups(message.bot, message.from_user.id, ctx)
+    if not groups:
+        return
+    await _apply_group_registration_toggle(message, state, ctx, False)
+
+
+@router.message(F.chat.type == "private", F.text == "Panelni yopish")
+async def group_panel_close(message: Message, state: FSMContext, ctx: AppContext) -> None:
+    groups = await _list_panel_groups(message.bot, message.from_user.id, ctx)
+    if not groups:
+        return
+    await state.clear()
+    await message.answer("Kichik admin panel yopildi. Qayta ochish uchun /panel yuboring.", reply_markup=ReplyKeyboardRemove())
 
 
 @router.message(F.chat.type == "private", F.text == "Spam Boshqaruv")

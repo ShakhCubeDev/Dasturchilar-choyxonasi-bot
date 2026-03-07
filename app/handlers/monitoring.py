@@ -31,7 +31,7 @@ def _owner_onboarding_text(lang: str, group_title: str, group_chat_id: int, is_a
             return (
                 base
                 + "Сейчас у бота уже есть права администратора, значит все защитные функции активны.\n"
-                + f"Регистрацию можно переключать кнопками ниже или командой /group_reg {group_chat_id} on|off."
+                + f"Регистрацию можно переключать кнопками ниже, командой /group_reg {group_chat_id} on|off или через /panel."
             )
         return (
             base
@@ -52,7 +52,7 @@ def _owner_onboarding_text(lang: str, group_title: str, group_chat_id: int, is_a
             return (
                 base
                 + "The bot already has admin rights, so all protection features are active.\n"
-                + f"You can switch registration with the buttons below or with /group_reg {group_chat_id} on|off."
+                + f"You can switch registration with the buttons below, with /group_reg {group_chat_id} on|off, or via /panel."
             )
         return (
             base
@@ -72,7 +72,7 @@ def _owner_onboarding_text(lang: str, group_title: str, group_chat_id: int, is_a
         return (
             base
             + "Botda admin huquqi bor, demak himoya funksiyalari hozirning o'zida ishlaydi.\n"
-            + f"Registration holatini pastdagi tugmalar yoki /group_reg {group_chat_id} on|off orqali boshqarishingiz mumkin."
+            + f"Registration holatini pastdagi tugmalar, /group_reg {group_chat_id} on|off yoki /panel orqali boshqarishingiz mumkin."
         )
     return (
         base

@@ -127,9 +127,9 @@ def _outside_start_text(lang: str, owned_groups: list[Any]) -> str:
         }[lang]
         text += header + "\n".join(group_lines)
         tail = {
-            "uz": "\n\nHar bir guruh uchun /group_reg <group_id> on|off orqali registrationni boshqarishingiz mumkin.",
-            "ru": "\n\nДля каждой группы вы можете управлять регистрацией через /group_reg <group_id> on|off.",
-            "en": "\n\nFor each group you can manage registration with /group_reg <group_id> on|off.",
+            "uz": "\n\nQulay boshqaruv uchun /panel yuboring yoki /group_reg <group_id> on|off ishlating.",
+            "ru": "\n\nДля удобного управления отправьте /panel или используйте /group_reg <group_id> on|off.",
+            "en": "\n\nFor easier control, send /panel or use /group_reg <group_id> on|off.",
         }[lang]
         text += tail
     return text

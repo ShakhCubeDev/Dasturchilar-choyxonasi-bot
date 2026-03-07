@@ -169,3 +169,16 @@ class MultiGroupRepository:
             items.extend(await self._special.list_owned_groups(owner_telegram_id))
         items.sort(key=lambda x: x.updated_at, reverse=True)
         return items
+
+    async def list_all_groups(self, limit: int = 500) -> list[GroupRecord]:
+        items = await self._primary.list_all_groups(limit)
+        if self._special is not None:
+            items.extend(await self._special.list_all_groups(limit))
+        dedup: dict[int, GroupRecord] = {}
+        for item in items:
+            prev = dedup.get(item.chat_id)
+            if prev is None or item.updated_at > prev.updated_at:
+                dedup[item.chat_id] = item
+        result = list(dedup.values())
+        result.sort(key=lambda x: x.updated_at, reverse=True)
+        return result[:limit]

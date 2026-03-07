@@ -75,3 +75,10 @@ class GroupRepository:
             owner_telegram_id,
         )
         return [self._to_model(row) for row in rows]
+
+    async def list_all_groups(self, limit: int = 500) -> list[GroupRecord]:
+        rows = await self._pool.fetch(
+            "SELECT * FROM groups ORDER BY updated_at DESC LIMIT $1;",
+            limit,
+        )
+        return [self._to_model(row) for row in rows]
