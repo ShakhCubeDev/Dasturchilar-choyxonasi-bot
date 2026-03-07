@@ -27,6 +27,9 @@ class Settings(BaseSettings):
         default=30,
         alias="GROUP_REPLY_COOLDOWN_SECONDS",
     )
+    nsfw_scan_on_join: bool = Field(default=True, alias="NSFW_SCAN_ON_JOIN")
+    nsfw_profile_threshold: float = Field(default=0.8, alias="NSFW_PROFILE_THRESHOLD")
+    nsfw_model_dir: str = Field(default="models/open_nsfw", alias="NSFW_MODEL_DIR")
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
     log_file: str = Field(default="logs/bot.log", alias="LOG_FILE")
     max_purpose_length: int = Field(default=200, alias="MAX_PURPOSE_LENGTH")

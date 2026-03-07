@@ -71,9 +71,6 @@ async def _is_group_admin(bot, group_chat_id: int, user_id: int) -> bool:
 
 
 async def _can_reject_user(bot, ctx: AppContext, requester_id: int, group_chat_id: int) -> bool:
-    mode = _parse_mode("dch" if group_chat_id == ctx.settings.special_group_id else "other")
-    if mode == MODE_OTHER:
-        return _is_primary_admin(requester_id, ctx)
     if _is_admin(requester_id, ctx):
         return True
     grp = await ctx.groups.get_by_chat_id(group_chat_id)
@@ -644,7 +641,7 @@ async def reject_user(callback: CallbackQuery, ctx: AppContext) -> None:
             lambda: callback.bot.send_message(
                 target_telegram_id,
                 reject_text,
-                reply_markup=registration_deeplink_keyboard(ctx.settings.bot_username, group_chat_id),
+                reply_markup=registration_deeplink_keyboard(ctx.settings.bot_username, group_chat_id, updated.language),
             )
         )
     else:
@@ -697,9 +694,13 @@ async def group_registration_control_cmd(message: Message, ctx: AppContext) -> N
 
     if _is_primary_admin(message.from_user.id, ctx):
         pass
-    elif not await _is_group_admin(message.bot, gid, message.from_user.id):
-        await message.answer("Bu amal faqat Asosiy Admin yoki o'sha guruh adminlari uchun.")
-        return
+    else:
+        grp = await ctx.groups.get_by_chat_id(gid)
+        if grp and grp.owner_telegram_id == message.from_user.id:
+            pass
+        elif not await _is_group_admin(message.bot, gid, message.from_user.id):
+            await message.answer("Bu amal faqat Asosiy Admin, guruh egasi yoki o'sha guruh adminlari uchun.")
+            return
 
     enabled = mode == "on"
     await ctx.groups.set_registration_enabled(gid, enabled)

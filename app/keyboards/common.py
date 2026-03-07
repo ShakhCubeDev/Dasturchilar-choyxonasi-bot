@@ -10,15 +10,15 @@ from aiogram.types import (
 
 LANGUAGE_ITEMS = [
     ("uz", "Uzbek"),
-    ("ru", "Russkiy"),
+    ("ru", "Русский"),
     ("en", "English"),
 ]
 
 EXPERIENCE_ITEMS = [
-    ("1y", "1 yil", "1 god", "1 year"),
-    ("2_3y", "2-3 yil", "2-3 goda", "2-3 years"),
-    ("4_7y", "4-7 yil", "4-7 let", "4-7 years"),
-    ("8_plus", "8+ yil", "8+ let", "8+ years"),
+    ("1y", "1 yil", "1 год", "1 year"),
+    ("2_3y", "2-3 yil", "2-3 года", "2-3 years"),
+    ("4_7y", "4-7 yil", "4-7 лет", "4-7 years"),
+    ("8_plus", "8+ yil", "8+ лет", "8+ years"),
 ]
 
 
@@ -29,7 +29,7 @@ def language_keyboard() -> InlineKeyboardMarkup:
 
 def contact_keyboard(lang: str) -> ReplyKeyboardMarkup:
     if lang == "ru":
-        title = "Otpravit kontakt"
+        title = "Отправить контакт"
     elif lang == "en":
         title = "Send contact"
     else:
@@ -54,8 +54,8 @@ def experience_keyboard(lang: str) -> InlineKeyboardMarkup:
 
 
 def confirm_keyboard(lang: str) -> InlineKeyboardMarkup:
-    confirm = {"uz": "Tasdiqlash", "ru": "Podtverdit", "en": "Confirm"}.get(lang, "Tasdiqlash")
-    reset = {"uz": "Qayta toldirish", "ru": "Zapolnit zanovo", "en": "Refill"}.get(lang, "Qayta toldirish")
+    confirm = {"uz": "Tasdiqlash", "ru": "Подтвердить", "en": "Confirm"}.get(lang, "Tasdiqlash")
+    reset = {"uz": "Qayta toldirish", "ru": "Заполнить заново", "en": "Fill again"}.get(lang, "Qayta toldirish")
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text=confirm, callback_data="confirm:yes")],
@@ -64,14 +64,24 @@ def confirm_keyboard(lang: str) -> InlineKeyboardMarkup:
     )
 
 
-def registration_deeplink_keyboard(bot_username: str, group_chat_id: int) -> InlineKeyboardMarkup:
+def registration_deeplink_keyboard(bot_username: str, group_chat_id: int, lang: str = "uz") -> InlineKeyboardMarkup:
     url = f"https://t.me/{bot_username}?start=reg_{group_chat_id}"
-    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Royxatdan otish", url=url)]])
+    title = {
+        "uz": "Ro'yxatdan o'tish",
+        "ru": "Зарегистрироваться",
+        "en": "Register",
+    }.get(lang, "Ro'yxatdan o'tish")
+    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=title, url=url)]])
 
 
-def add_bot_to_group_keyboard(bot_username: str) -> InlineKeyboardMarkup:
+def add_bot_to_group_keyboard(bot_username: str, lang: str = "uz") -> InlineKeyboardMarkup:
     url = f"https://t.me/{bot_username}?startgroup=start&admin=restrict_members+delete_messages+invite_users"
-    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Botni guruhga qoshish", url=url)]])
+    title = {
+        "uz": "Botni guruhga qo'shish",
+        "ru": "Добавить бота в группу",
+        "en": "Add Bot To Group",
+    }.get(lang, "Botni guruhga qo'shish")
+    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=title, url=url)]])
 
 
 def group_select_keyboard(items: list[tuple[int, str]]) -> InlineKeyboardMarkup:
@@ -177,12 +187,22 @@ def admin_reply_cancel_back_keyboard() -> ReplyKeyboardMarkup:
     )
 
 
-def registration_toggle_keyboard(group_chat_id: int) -> InlineKeyboardMarkup:
+def registration_toggle_keyboard(group_chat_id: int, lang: str = "uz") -> InlineKeyboardMarkup:
+    on_text = {
+        "uz": "Ro'yxatdan o'tishni YOQISH",
+        "ru": "ВКЛЮЧИТЬ регистрацию",
+        "en": "ENABLE registration",
+    }.get(lang, "Ro'yxatdan o'tishni YOQISH")
+    off_text = {
+        "uz": "Ro'yxatdan o'tishni O'CHIRISH",
+        "ru": "ВЫКЛЮЧИТЬ регистрацию",
+        "en": "DISABLE registration",
+    }.get(lang, "Ro'yxatdan o'tishni O'CHIRISH")
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(text="Ro'yxatdan o'tishni YOQISH", callback_data=f"regctl:{group_chat_id}:on"),
-                InlineKeyboardButton(text="Ro'yxatdan o'tishni O'CHIRISH", callback_data=f"regctl:{group_chat_id}:off"),
+                InlineKeyboardButton(text=on_text, callback_data=f"regctl:{group_chat_id}:on"),
+                InlineKeyboardButton(text=off_text, callback_data=f"regctl:{group_chat_id}:off"),
             ]
         ]
     )

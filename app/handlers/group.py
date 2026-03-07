@@ -70,11 +70,47 @@ async def _send_group_registration_message(
         lambda: message.bot.send_message(
             chat_id=group_chat_id,
             text=text,
-            reply_markup=registration_deeplink_keyboard(ctx.settings.bot_username, group_chat_id),
+            reply_markup=registration_deeplink_keyboard(ctx.settings.bot_username, group_chat_id, group_lang),
             disable_web_page_preview=True,
         )
     )
     return int(sent.message_id) if sent else None
+
+
+async def _handle_nsfw_profile_photo(message: Message, ctx: AppContext, member) -> bool:
+    if not ctx.settings.nsfw_scan_on_join or ctx.nsfw is None:
+        return False
+
+    result = await ctx.nsfw.scan_user_profile(message.bot, member.id)
+    if not result.flagged:
+        return False
+
+    group_chat_id = message.chat.id
+    try:
+        await ctx.spam.add_global_spam(
+            mode=group_mode(group_chat_id, ctx.settings),
+            telegram_id=member.id,
+            source_group_id=group_chat_id,
+            source_poll_id=None,
+            reason="nsfw_profile_photo",
+            target_username=member.username,
+            source_group_title=message.chat.title,
+            source_group_username=message.chat.username,
+        )
+    except Exception:
+        ctx.logger.exception("nsfw_profile_photo_store_failed group=%s telegram_id=%s", group_chat_id, member.id)
+        return False
+    ctx.logger.warning(
+        "nsfw_profile_photo_ban group=%s telegram_id=%s score=%.4f",
+        group_chat_id,
+        member.id,
+        result.score or -1.0,
+    )
+    try:
+        await _kick_user_immediate(message, group_chat_id, member.id)
+    except Exception:
+        ctx.logger.exception("nsfw_profile_photo_kick_failed group=%s telegram_id=%s", group_chat_id, member.id)
+    return True
 
 
 def _delete_later(bot, chat_id: int, message_id: int, delay_seconds: int = 600) -> None:
@@ -108,6 +144,9 @@ async def _on_user_join_dch(message: Message, ctx: AppContext) -> None:
                 await _kick_user_immediate(message, group_chat_id, member.id)
             except Exception:
                 ctx.logger.exception("global_spam_kick_failed join group=%s telegram_id=%s", group_chat_id, member.id)
+            continue
+        if await _handle_nsfw_profile_photo(message, ctx, member):
+            await safe_delete_message(message.bot, group_chat_id, message.message_id)
             continue
 
         try:
@@ -160,6 +199,9 @@ async def _on_user_join_other_groups(message: Message, ctx: AppContext) -> None:
                 await _kick_user_immediate(message, group_chat_id, member.id)
             except Exception:
                 ctx.logger.exception("global_spam_kick_failed join group=%s telegram_id=%s", group_chat_id, member.id)
+            continue
+        if await _handle_nsfw_profile_photo(message, ctx, member):
+            await safe_delete_message(message.bot, group_chat_id, message.message_id)
             continue
         if not registration_enabled:
             continue

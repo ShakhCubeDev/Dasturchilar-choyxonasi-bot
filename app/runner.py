@@ -19,6 +19,7 @@ from app.repositories.spam import SpamRepository
 from app.repositories.texts import BotTextsRepository
 from app.repositories.users import UserRepository
 from app.services.context import AppContext
+from app.services.nsfw import OpenNSFWService
 from app.services.spam_watcher import spam_poll_watcher
 from app.services.texts import TextService
 from app.storage.postgres import PostgresStorage
@@ -61,6 +62,9 @@ async def run_polling() -> None:
     await texts_repo.ensure_schema()
     await texts_repo.seed_defaults_if_missing(DEFAULT_TEXTS)
 
+    def _has_cyrillic(value: str) -> bool:
+        return any("\u0400" <= char <= "\u04FF" for char in value)
+
     # If existing DB texts still mention the old min age (14), upgrade the active texts.
     for lang in ("uz", "ru", "en"):
         for key in ("age_prompt", "age_invalid"):
@@ -71,8 +75,25 @@ async def run_polling() -> None:
             if "14" in old and "70" in old and "12" not in old:
                 await texts_repo.ensure_active_text(lang, key, DEFAULT_TEXTS[lang][key])
 
+    for lang in ("uz", "ru", "en"):
+        for key in ("name_prompt", "name_invalid", "other_name_prompt", "other_name_invalid"):
+            active = await texts_repo.get_active(lang, key)
+            if not active:
+                continue
+            old = (active.text or "").lower()
+            if any(token in old for token in ("optional", "ixtiyoriy", "neobyazatel", "необяз", "yuboring '-'", "send '-'")):
+                await texts_repo.ensure_active_text(lang, key, DEFAULT_TEXTS[lang][key])
+
+    for key in DEFAULT_TEXTS["ru"].keys():
+        active = await texts_repo.get_active("ru", key)
+        if not active:
+            continue
+        if not _has_cyrillic(active.text or ""):
+            await texts_repo.ensure_active_text("ru", key, DEFAULT_TEXTS["ru"][key])
+
     texts = TextService(texts_repo)
-    ctx = AppContext(settings=settings, users=users, groups=groups, gates=gates, spam=spam_repo, texts=texts, logger=logger)
+    nsfw = OpenNSFWService(settings.nsfw_model_dir, settings.nsfw_profile_threshold, logger) if settings.nsfw_scan_on_join else None
+    ctx = AppContext(settings=settings, users=users, groups=groups, gates=gates, spam=spam_repo, texts=texts, logger=logger, nsfw=nsfw)
 
     bot = Bot(token=settings.bot_token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 

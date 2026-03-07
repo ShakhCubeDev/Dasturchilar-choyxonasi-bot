@@ -38,7 +38,10 @@ class GroupRepository:
         ON CONFLICT (chat_id)
         DO UPDATE SET
             title = EXCLUDED.title,
-            owner_telegram_id = EXCLUDED.owner_telegram_id,
+            owner_telegram_id = CASE
+                WHEN groups.bot_is_admin = FALSE AND EXCLUDED.bot_is_admin = TRUE THEN EXCLUDED.owner_telegram_id
+                ELSE groups.owner_telegram_id
+            END,
             bot_is_admin = EXCLUDED.bot_is_admin,
             updated_at = NOW()
         RETURNING *;

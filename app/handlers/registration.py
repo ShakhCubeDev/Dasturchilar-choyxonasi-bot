@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from html import escape
 import logging
 from typing import Any
 
@@ -11,6 +12,7 @@ from aiogram.types import CallbackQuery, Message
 
 from app.keyboards.common import (
     EXPERIENCE_ITEMS,
+    add_bot_to_group_keyboard,
     admin_reply_main_keyboard,
     confirm_keyboard,
     contact_keyboard,
@@ -21,6 +23,7 @@ from app.keyboards.common import (
 from app.services.context import AppContext
 from app.services.modes import MODE_DCH, group_mode
 from app.states import RegistrationStates
+from app.utils.language import preferred_user_lang
 from app.utils.telegram_ops import touch_state, with_retry
 from app.utils.validators import clean_text, is_spam_text, is_valid_name
 
@@ -56,7 +59,7 @@ async def _t_mode(ctx: AppContext, lang: str, key: str, is_dch: bool, **kwargs: 
 
 def _support_footer(lang: str) -> str:
     if lang == "ru":
-        return "Esli voznikli problemy, obratites k adminu bota: @CubeDev."
+        return "Если возникли проблемы, обратитесь к администратору бота: @CubeDev."
     if lang == "en":
         return "If you have any issues, contact the bot admin: @CubeDev."
     return "Agar muammo bolsa, bot admini @CubeDev ga murojaat qiling."
@@ -64,6 +67,72 @@ def _support_footer(lang: str) -> str:
 
 def _with_support(text: str, lang: str) -> str:
     return text.rstrip() + "\n\n" + _support_footer(lang)
+
+
+def _owner_group_state_text(lang: str, enabled: bool) -> str:
+    if lang == "ru":
+        return "включена" if enabled else "выключена"
+    if lang == "en":
+        return "enabled" if enabled else "disabled"
+    return "yoqilgan" if enabled else "o'chirilgan"
+
+
+def _outside_start_text(lang: str, owned_groups: list[Any]) -> str:
+    group_lines = []
+    for group in owned_groups[:10]:
+        title = escape(group.title)
+        group_lines.append(
+            {
+                "uz": f"• {title} ({group.chat_id}) — ro'yxatdan o'tish: {_owner_group_state_text(lang, group.registration_enabled)}",
+                "ru": f"• {title} ({group.chat_id}) — регистрация: {_owner_group_state_text(lang, group.registration_enabled)}",
+                "en": f"• {title} ({group.chat_id}) — registration: {_owner_group_state_text(lang, group.registration_enabled)}",
+            }[lang]
+        )
+
+    texts = {
+        "uz": (
+            "Assalomu alaykum. Men guruhingiz uchun ro'yxatdan o'tkazish va himoya botiman.\n\n"
+            "Meni o'z guruhingizga qo'shib, admin huquqini bering. Shunda siz:\n"
+            "• yangi userlarni deep link orqali ro'yxatdan o'tkazasiz\n"
+            "• ro'yxatdan o'tmagan userlarni avtomatik cheklaysiz\n"
+            "• global spam himoyasidan foydalanasiz\n"
+            "• 18+ profil rasmi bo'lgan userlarni avtomatik aniqlaysiz\n"
+            "• faqat o'zingiz qo'shgan guruhlar sozlamalarini boshqarasiz"
+        ),
+        "ru": (
+            "Здравствуйте. Я бот для регистрации и защиты вашей группы.\n\n"
+            "Добавьте меня в свою группу и выдайте права администратора. Тогда вы сможете:\n"
+            "• регистрировать новых пользователей через deep link\n"
+            "• автоматически ограничивать незарегистрированных участников\n"
+            "• использовать глобальную spam-защиту\n"
+            "• автоматически выявлять пользователей с 18+ аватаром\n"
+            "• управлять только данными и настройками своих групп"
+        ),
+        "en": (
+            "Hello. I am a registration and protection bot for your group.\n\n"
+            "Add me to your group and grant admin rights. Then you will be able to:\n"
+            "• register new users via deep links\n"
+            "• automatically restrict unregistered members\n"
+            "• use global spam protection\n"
+            "• automatically detect users with 18+ profile photos\n"
+            "• manage only the data and settings of your own groups"
+        ),
+    }
+    text = texts[lang]
+    if group_lines:
+        header = {
+            "uz": "\n\nSiz boshqarayotgan guruhlar:\n",
+            "ru": "\n\nВаши группы:\n",
+            "en": "\n\nYour groups:\n",
+        }[lang]
+        text += header + "\n".join(group_lines)
+        tail = {
+            "uz": "\n\nHar bir guruh uchun /group_reg <group_id> on|off orqali registrationni boshqarishingiz mumkin.",
+            "ru": "\n\nДля каждой группы вы можете управлять регистрацией через /group_reg <group_id> on|off.",
+            "en": "\n\nFor each group you can manage registration with /group_reg <group_id> on|off.",
+        }[lang]
+        text += tail
+    return text
 
 
 def _extract_start_payload(message: Message) -> str | None:
@@ -125,6 +194,7 @@ async def _preview(ctx: AppContext, data: dict[str, Any], lang: str) -> str:
 async def start_registration(message: Message, state: FSMContext, ctx: AppContext) -> None:
     telegram_id = message.from_user.id
     username = message.from_user.username
+    start_lang = preferred_user_lang(message.from_user.language_code if message.from_user else None)
 
     if telegram_id in set(ctx.settings.admin_ids):
         await state.clear()
@@ -137,12 +207,9 @@ async def start_registration(message: Message, state: FSMContext, ctx: AppContex
 
     group_chat_id, group_title = await _resolve_group_for_start(message, state, ctx)
     if group_chat_id is None:
-        await message.answer(
-            _with_support(
-                "Ro'yxatdan o'tish shu guruhning inline tugmasi (deep link) orqali boshlanadi.",
-                "uz",
-            ),
-        )
+        owned_groups = await ctx.groups.list_owned_groups(telegram_id)
+        reply_markup = add_bot_to_group_keyboard(ctx.settings.bot_username, start_lang) if ctx.settings.bot_username else None
+        await message.answer(_with_support(_outside_start_text(start_lang, owned_groups), start_lang), reply_markup=reply_markup)
         return
 
     mode = group_mode(group_chat_id, ctx.settings)
@@ -255,11 +322,8 @@ async def name_step(message: Message, state: FSMContext, ctx: AppContext) -> Non
         await message.answer(await _t_mode(ctx, lang, "name_invalid", is_dch))
         return
     raw = clean_text(message.text)
-    if not is_dch and raw == "-":
-        await message.answer(await _t_mode(ctx, lang, "name_invalid", is_dch))
-        return
-    full_name = None if is_dch and raw == "-" else raw
-    if full_name is None or not is_valid_name(full_name):
+    full_name = raw
+    if not is_valid_name(full_name):
         await message.answer(await _t_mode(ctx, lang, "name_invalid", is_dch))
         return
     await state.update_data(full_name=full_name)
@@ -525,10 +589,15 @@ async def notify_group_admin_about_registration_dch(ctx: AppContext, bot: Any, u
 async def notify_group_admin_about_registration_other_groups(ctx: AppContext, bot: Any, user: Any) -> None:
     from app.keyboards.common import admin_reject_keyboard
 
-    if not ctx.settings.admin_ids:
-        return
-    primary_admin_id = ctx.settings.admin_ids[0]
     grp = await ctx.groups.get_by_chat_id(user.group_chat_id)
+    recipients: set[int] = set()
+    if ctx.settings.admin_ids:
+        recipients.add(ctx.settings.admin_ids[0])
+    if grp:
+        recipients.add(grp.owner_telegram_id)
+    if not recipients:
+        return
+
     lines = [
         "New User Registered",
         "",
@@ -544,13 +613,14 @@ async def notify_group_admin_about_registration_other_groups(ctx: AppContext, bo
         f"Phone: {user.phone}",
     ]
     text = "\n".join(lines)
-    try:
-        await with_retry(
-            lambda: bot.send_message(
-                primary_admin_id,
-                text,
-                reply_markup=admin_reject_keyboard(user.group_chat_id, user.telegram_id),
+    for admin_id in recipients:
+        try:
+            await with_retry(
+                lambda target=admin_id: bot.send_message(
+                    target,
+                    text,
+                    reply_markup=admin_reject_keyboard(user.group_chat_id, user.telegram_id),
+                )
             )
-        )
-    except TelegramBadRequest:
-        logger.exception("registration_failed: admin message failed admin_id=%s", primary_admin_id)
+        except TelegramBadRequest:
+            logger.exception("registration_failed: admin message failed admin_id=%s", admin_id)
