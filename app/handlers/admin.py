@@ -831,11 +831,11 @@ async def set_active_cmd(message: Message, ctx: AppContext) -> None:
         return
     args = (message.text or "").split(maxsplit=2)
     if len(args) != 3:
-        await message.answer("Usage: /set_active &lt;group_chat_id&gt; &lt;telegram_id&gt;")
+        await message.answer("Usage: /set_active group_chat_id telegram_id")
         return
     gid = _parse_chat_id(args[1])
     if gid is None or not args[2].isdigit():
-        await message.answer("Usage: /set_active &lt;group_chat_id&gt; &lt;telegram_id&gt;")
+        await message.answer("Usage: /set_active group_chat_id telegram_id")
         return
     tid = int(args[2])
     updated = await ctx.users.update_status(gid, tid, "active")
@@ -851,7 +851,7 @@ async def group_registration_control_cmd(message: Message, ctx: AppContext) -> N
     # This command is for group admins (not only global bot admins).
     args = (message.text or "").split(maxsplit=2)
     if len(args) != 3:
-        await message.answer("Usage: /group_reg &lt;group_chat_id&gt; on|off")
+        await message.answer("Usage: /group_reg group_chat_id on|off")
         return
     gid = _parse_chat_id(args[1])
     if gid is None:
@@ -901,7 +901,7 @@ async def purge_user_cmd(message: Message, ctx: AppContext) -> None:
         return
     args = (message.text or "").split(maxsplit=1)
     if len(args) != 2:
-        await message.answer("Usage: /purge_user <telegram_id|@username>")
+        await message.answer("Usage: /purge_user telegram_id|@username")
         return
     tid = await _resolve_target_telegram_id(message, args[1].strip())
     if tid is None:
