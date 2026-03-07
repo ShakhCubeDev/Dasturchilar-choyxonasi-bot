@@ -30,9 +30,12 @@ def _is_service_message(message: Message) -> bool:
 
 
 def _user_ref(user_id: int, username: str | None, full_name: str) -> str:
+    cleaned_name = " ".join(full_name.strip().split())
+    if cleaned_name:
+        return cleaned_name
     if username:
         return f"@{username}"
-    return full_name
+    return f"user {user_id}"
 
 
 async def _send_group_registration_message(

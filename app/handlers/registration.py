@@ -255,8 +255,11 @@ async def name_step(message: Message, state: FSMContext, ctx: AppContext) -> Non
         await message.answer(await _t_mode(ctx, lang, "name_invalid", is_dch))
         return
     raw = clean_text(message.text)
-    full_name = None if raw == "-" else raw
-    if full_name is not None and not is_valid_name(full_name):
+    if not is_dch and raw == "-":
+        await message.answer(await _t_mode(ctx, lang, "name_invalid", is_dch))
+        return
+    full_name = None if is_dch and raw == "-" else raw
+    if full_name is None or not is_valid_name(full_name):
         await message.answer(await _t_mode(ctx, lang, "name_invalid", is_dch))
         return
     await state.update_data(full_name=full_name)
