@@ -18,6 +18,7 @@ from app.repositories.multi import MultiGroupRepository, MultiJoinGateRepository
 from app.repositories.spam import SpamRepository
 from app.repositories.texts import BotTextsRepository
 from app.repositories.users import UserRepository
+from app.services.cleanup import cleanup_watcher
 from app.services.context import AppContext
 from app.services.nsfw import OpenNSFWService
 from app.services.spam_watcher import spam_poll_watcher
@@ -113,12 +114,16 @@ async def run_polling() -> None:
     dp.include_router(group.router)
 
     watcher_task = asyncio.create_task(spam_poll_watcher(ctx, bot))
+    cleanup_task = asyncio.create_task(cleanup_watcher(db.pool, logger, interval_hours=24))
     try:
         await dp.start_polling(bot)
     finally:
         watcher_task.cancel()
+        cleanup_task.cancel()
         with contextlib.suppress(asyncio.CancelledError, Exception):
             await watcher_task
+        with contextlib.suppress(asyncio.CancelledError, Exception):
+            await cleanup_task
         if special_db:
             await special_db.disconnect()
         await db.disconnect()

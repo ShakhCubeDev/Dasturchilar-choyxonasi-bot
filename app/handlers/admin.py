@@ -20,6 +20,7 @@ from app.keyboards.common import (
     group_admin_panel_keyboard,
     registration_deeplink_keyboard,
 )
+from app.services.cleanup import DatabaseCleanupService
 from app.services.context import AppContext
 from app.services.modes import MODE_DCH, MODE_OTHER
 from app.utils.telegram_ops import with_retry
@@ -896,3 +897,66 @@ async def purge_user_cmd(message: Message, ctx: AppContext) -> None:
     deleted_users = await ctx.users.delete_all_by_telegram_id(tid)
     deleted_gates = await ctx.gates.delete_all_for_user(tid)
     await message.answer(f"User {tid} tozalandi. users={deleted_users}, join_gates={deleted_gates}")
+
+
+@router.message(Command("db_stats"), F.chat.type == "private")
+async def db_stats_cmd(message: Message, ctx: AppContext) -> None:
+    """Database hajmini ko'rish."""
+    if not _is_admin(message.from_user.id, ctx):
+        await message.answer(await ctx.texts.t("uz", "admin_only"))
+        return
+    
+    try:
+        # Table sizes
+        query = """
+            SELECT
+                schemaname,
+                tablename,
+                pg_size_pretty(pg_total_relation_size(schemaname||'.'||tablename)) as size
+            FROM pg_tables
+            WHERE schemaname = 'public'
+            ORDER BY pg_total_relation_size(schemaname||'.'||tablename) DESC;
+        """
+        rows = await ctx.users._pool.fetch(query)
+        lines = ["📊 Database jadvallari:", ""]
+        for row in rows:
+            lines.append(f"{row['tablename']}: {row['size']}")
+        
+        # Total size
+        total_query = "SELECT pg_size_pretty(pg_database_size(current_database()));"
+        total = await ctx.users._pool.fetchval(total_query)
+        lines.extend(["", f"💾 Jami database hajmi: {total}"])
+        
+        await message.answer("\n".join(lines))
+    except Exception:
+        ctx.logger.exception("db_stats failed")
+        await message.answer("Xatolik yuz berdi.")
+
+
+@router.message(Command("db_cleanup"), F.chat.type == "private")
+async def db_cleanup_cmd(message: Message, ctx: AppContext) -> None:
+    """Qo'lda database tozalash."""
+    if not _is_dev_admin(message.from_user.id, ctx):
+        await message.answer("Bu amal faqat Dev Admin uchun.")
+        return
+    
+    progress = await message.answer("🧹 Database tozalash boshlandi...")
+    
+    try:
+        cleanup = DatabaseCleanupService(ctx.users._pool, ctx.logger)
+        results = await cleanup.run_cleanup()
+        
+        lines = ["✅ Tozalash yakunlandi:", ""]
+        for key, value in results.items():
+            if value >= 0:
+                lines.append(f"• {key}: {value} ta o'chirildi")
+            else:
+                lines.append(f"• {key}: xatolik")
+        
+        total = sum(v for v in results.values() if v > 0)
+        lines.extend(["", f"Jami o'chirildi: {total}"])
+        
+        await progress.edit_text("\n".join(lines))
+    except Exception:
+        ctx.logger.exception("db_cleanup failed")
+        await progress.edit_text("❌ Xatolik yuz berdi.")
