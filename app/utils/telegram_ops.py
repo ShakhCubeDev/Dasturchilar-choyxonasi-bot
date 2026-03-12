@@ -11,6 +11,9 @@ from aiogram.types import Message
 
 T = TypeVar("T")
 
+# Background tasklarni kuzatish uchun set
+_background_tasks: set[asyncio.Task] = set()
+
 
 async def with_retry(operation: Callable[[], Awaitable[T]], attempts: int = 3) -> T | None:
     for index in range(attempts):
@@ -33,9 +36,15 @@ async def safe_delete_message(bot: Bot, chat_id: int, message_id: int) -> None:
         return
 
 
-async def delete_message_later(bot: Bot, chat_id: int, message_id: int, delay_seconds: int = 60) -> None:
-    await asyncio.sleep(delay_seconds)
-    await safe_delete_message(bot, chat_id, message_id)
+def delete_message_later(bot: Bot, chat_id: int, message_id: int, delay_seconds: int = 60) -> None:
+    """Xabarni keyinroq o'chirish. Task avtomatik ravishda kuzatiladi va tozalanadi."""
+    async def _job() -> None:
+        await asyncio.sleep(delay_seconds)
+        await safe_delete_message(bot, chat_id, message_id)
+
+    task = asyncio.create_task(_job())
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
 
 
 async def reply_with_retry(message: Message, text: str, **kwargs: object) -> Message | None:

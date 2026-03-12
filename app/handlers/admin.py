@@ -543,6 +543,27 @@ async def broadcast_start_callback(callback: CallbackQuery, state: FSMContext, c
         await callback.message.answer("Barchaga yuboriladigan habar matnini yuboring.", reply_markup=admin_reply_cancel_back_keyboard())
 
 
+async def _execute_broadcast(bot, messageable, ctx: AppContext, text: str) -> None:
+    """Broadcast xabarlarni yuborish yordamchi funksiyasi."""
+    ids = await ctx.users.list_telegram_ids_by_status("active")
+    ok = 0
+    fail = 0
+    progress = await messageable.answer(f"Yuborish boshlandi... Jami active={len(ids)}")
+    for idx, tid in enumerate(ids, start=1):
+        try:
+            res = await with_retry(lambda t=text, to=tid: bot.send_message(to, t, disable_web_page_preview=True))
+            if res is None:
+                fail += 1
+            else:
+                ok += 1
+        except Exception:
+            fail += 1
+        if idx % 25 == 0:
+            await progress.edit_text(f"Yuborilmoqda: {idx}/{len(ids)} | ok={ok} fail={fail}")
+        await asyncio.sleep(0.03)
+    await progress.edit_text(f"Yuborish tugadi. Jami={len(ids)} | ok={ok} fail={fail}")
+
+
 @router.message(AdminStates.broadcast_text, F.chat.type == "private")
 async def broadcast_collect_text(message: Message, state: FSMContext, ctx: AppContext) -> None:
     if not _is_admin(message.from_user.id, ctx):
@@ -578,23 +599,7 @@ async def broadcast_confirm_message(message: Message, state: FSMContext, ctx: Ap
     if not payload:
         await _show_main_menu(message, ctx)
         return
-    ids = await ctx.users.list_telegram_ids_by_status("active")
-    ok = 0
-    fail = 0
-    progress = await message.answer(f"Yuborish boshlandi... Jami active={len(ids)}")
-    for idx, tid in enumerate(ids, start=1):
-        try:
-            res = await with_retry(lambda t=payload, to=tid: message.bot.send_message(to, t, disable_web_page_preview=True))
-            if res is None:
-                fail += 1
-            else:
-                ok += 1
-        except Exception:
-            fail += 1
-        if idx % 25 == 0:
-            await progress.edit_text(f"Yuborilmoqda: {idx}/{len(ids)} | ok={ok} fail={fail}")
-        await asyncio.sleep(0.03)
-    await progress.edit_text(f"Yuborish tugadi. Jami={len(ids)} | ok={ok} fail={fail}")
+    await _execute_broadcast(message.bot, message, ctx, payload)
     await _show_main_menu(message, ctx)
 
 
@@ -618,28 +623,9 @@ async def broadcast_send_callback(callback: CallbackQuery, state: FSMContext, ct
     data = await state.get_data()
     text = (data.get("broadcast_text") or "").strip()
     await state.clear()
-    if not text:
+    if not text or not callback.message:
         return
-    ids = await ctx.users.list_telegram_ids_by_status("active")
-    ok = 0
-    fail = 0
-    progress = None
-    if callback.message:
-        progress = await callback.message.answer(f"Yuborish boshlandi... Jami active={len(ids)}")
-    for idx, tid in enumerate(ids, start=1):
-        try:
-            res = await with_retry(lambda t=text, to=tid: callback.bot.send_message(to, t, disable_web_page_preview=True))
-            if res is None:
-                fail += 1
-            else:
-                ok += 1
-        except Exception:
-            fail += 1
-        if idx % 25 == 0 and progress:
-            await progress.edit_text(f"Yuborilmoqda: {idx}/{len(ids)} | ok={ok} fail={fail}")
-        await asyncio.sleep(0.03)
-    if progress:
-        await progress.edit_text(f"Yuborish tugadi. Jami={len(ids)} | ok={ok} fail={fail}")
+    await _execute_broadcast(callback.bot, callback.message, ctx, text)
 
 
 @router.message(F.chat.type == "private", F.text == "Set Active")

@@ -238,6 +238,7 @@ async def start_registration(message: Message, state: FSMContext, ctx: AppContex
             await message.answer(_with_support(await ctx.texts.t(lang, "already_active"), lang))
             return
         await message.answer(_with_support(await ctx.texts.t(user.language, "need_reregister"), user.language))
+        return
 
     await state.clear()
     await state.set_state(RegistrationStates.language)

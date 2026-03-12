@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import asyncio
-
 from aiogram import F, Router
 from aiogram.enums import ChatMemberStatus
 from aiogram.types import ChatPermissions, Message
@@ -9,7 +7,7 @@ from aiogram.types import ChatPermissions, Message
 from app.keyboards.common import registration_deeplink_keyboard
 from app.services.context import AppContext
 from app.services.modes import MODE_DCH, MODE_OTHER, group_mode
-from app.utils.telegram_ops import safe_delete_message, with_retry
+from app.utils.telegram_ops import delete_message_later, safe_delete_message, with_retry
 
 router = Router(name="group")
 
@@ -113,14 +111,6 @@ async def _handle_nsfw_profile_photo(message: Message, ctx: AppContext, member) 
     return True
 
 
-def _delete_later(bot, chat_id: int, message_id: int, delay_seconds: int = 600) -> None:
-    async def _job() -> None:
-        await asyncio.sleep(delay_seconds)
-        await safe_delete_message(bot, chat_id, message_id)
-
-    asyncio.create_task(_job())
-
-
 @router.message(F.chat.type.in_({"group", "supergroup"}), F.new_chat_members)
 async def on_user_join(message: Message, ctx: AppContext) -> None:
     mode = group_mode(message.chat.id, ctx.settings)
@@ -178,7 +168,7 @@ async def _on_user_join_dch(message: Message, ctx: AppContext) -> None:
             rejected=bool(record and record.status == "rejected"),
         )
         if warn_message_id:
-            _delete_later(message.bot, group_chat_id, warn_message_id, 600)
+            delete_message_later(message.bot, group_chat_id, warn_message_id, 600)
         await safe_delete_message(message.bot, group_chat_id, message.message_id)
 
 
@@ -234,7 +224,7 @@ async def _on_user_join_other_groups(message: Message, ctx: AppContext) -> None:
             rejected=bool(record and record.status == "rejected"),
         )
         if warn_message_id:
-            _delete_later(message.bot, group_chat_id, warn_message_id, 600)
+            delete_message_later(message.bot, group_chat_id, warn_message_id, 600)
         await safe_delete_message(message.bot, group_chat_id, message.message_id)
 
 
