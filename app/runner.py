@@ -35,6 +35,9 @@ async def run_polling() -> None:
 
     db = Database(settings.database_url)
     await db.connect()
+    if not await db.acquire_polling_lock():
+        await db.disconnect()
+        raise RuntimeError("Another bot polling instance is already running")
     await db.init_schema()
 
     special_db: Database | None = None

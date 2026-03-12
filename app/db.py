@@ -1,13 +1,17 @@
 from __future__ import annotations
 
 import asyncpg
-from asyncpg import Pool
+from asyncpg import Connection, Pool
 
 
 class Database:
+    _POLLING_LOCK_NAMESPACE = 0x44434842  # "DCHB"
+    _POLLING_LOCK_ID = 1
+
     def __init__(self, dsn: str) -> None:
         self._dsn = dsn
         self.pool: Pool | None = None
+        self._lock_conn: Connection | None = None
 
     async def connect(self) -> None:
         self.pool = await asyncpg.create_pool(
@@ -18,8 +22,48 @@ class Database:
         )
 
     async def disconnect(self) -> None:
+        await self.release_polling_lock()
         if self.pool:
             await self.pool.close()
+            self.pool = None
+
+    async def acquire_polling_lock(self) -> bool:
+        if self._lock_conn and not self._lock_conn.is_closed():
+            return True
+
+        conn = await asyncpg.connect(dsn=self._dsn, command_timeout=15)
+        try:
+            acquired = await conn.fetchval(
+                "SELECT pg_try_advisory_lock($1, $2);",
+                self._POLLING_LOCK_NAMESPACE,
+                self._POLLING_LOCK_ID,
+            )
+        except Exception:
+            await conn.close()
+            raise
+
+        if not acquired:
+            await conn.close()
+            return False
+
+        self._lock_conn = conn
+        return True
+
+    async def release_polling_lock(self) -> None:
+        if not self._lock_conn:
+            return
+
+        try:
+            if not self._lock_conn.is_closed():
+                await self._lock_conn.fetchval(
+                    "SELECT pg_advisory_unlock($1, $2);",
+                    self._POLLING_LOCK_NAMESPACE,
+                    self._POLLING_LOCK_ID,
+                )
+        finally:
+            if not self._lock_conn.is_closed():
+                await self._lock_conn.close()
+            self._lock_conn = None
 
     async def init_schema(self) -> None:
         if not self.pool:

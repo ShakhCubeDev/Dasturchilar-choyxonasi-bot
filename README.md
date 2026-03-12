@@ -24,6 +24,7 @@ Bu loyiha Telegram guruhni ro'yxatdan o'tmagan userlardan himoya qiladi, FSM orq
 - `/set_active <telegram_id>` admin komandasi
 - 10 daqiqa inactivity bo'lsa FSM reset
 - 30 soniya group warning flood control
+- Polling singleton himoyasi (ikkinchi instance PostgreSQL lock sabab ishga tushmaydi)
 - Log rotation va event loglar
 
 ## O'rnatish
